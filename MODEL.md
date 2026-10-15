@@ -113,6 +113,27 @@ Rerouting slows that growth, and spillback speeds it up.
 * The queue is never negative.
 * Vehicle conservation: waiting at start + arrived = passed + still waiting. This is shown after every run.
 
+## How to read the results
+
+| Result | Meaning |
+|---|---|
+| Vehicles arriving | Vehicles that joined the road during the simulation, after some drivers rerouted |
+| Vehicles passing through | Vehicles that got through the bottleneck |
+| Vehicles still waiting | The queue left when the simulation stops |
+| Longest queue | The largest number of vehicles waiting at once |
+| Average waiting time | Total time all vehicles spent in the queue ÷ (vehicles waiting at the start + vehicles that arrived), in minutes |
+| Worst traffic condition | The hour with the highest demand ratio: Stable / Building / Severe, with Level of Service A–F |
+| Drivers who took another route | Effect of the rerouting loop (B1) |
+| Capacity lost to spillback | Effect of the spillback loop (R2) |
+| Outcome | Whether the queue never formed, cleared, is growing, is shrinking, is stable, or builds up and clears repeatedly |
+| Vehicle check | Waiting at start + arrived = passed + still waiting, so no vehicle was lost or created |
+
+Read the **queue chart** first: a line that keeps rising means arrivals are above capacity
+and the queue will keep growing for as long as that lasts; a line that falls to zero means
+the road is clearing the backlog. The **arrivals vs capacity** chart explains why: the queue
+grows in every hour where arrivals are above capacity. To see the effect of one setting,
+change only that setting and run again, then compare the two runs.
+
 ## Assumptions
 
 1. One bottleneck, simulated in one-hour steps, with traffic spread evenly within each hour.

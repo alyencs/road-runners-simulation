@@ -1,4 +1,25 @@
+# Files the terminal program saves after each run
 results/
+
+# Python caches and build files
 __pycache__/
-*.pyc
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
 .venv/
+venv/
+env/
+
+# Local secrets and machine-specific settings (never commit these)
+.streamlit/secrets.toml
+.env
+
+# Editor and operating-system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

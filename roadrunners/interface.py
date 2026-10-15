@@ -12,7 +12,7 @@ import datetime as _dt
 import math
 import os
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, TextIO, Tuple
 
 from .model import Result, simulate
 
@@ -63,6 +63,15 @@ def parse_value(setting: Setting, text: str) -> Tuple[Optional[float], Optional[
     try:
         value = float(cleaned)
     except ValueError:
+        return None, setting.error
+    return check_value(setting, value)
+
+
+def check_value(setting: Setting, value: float) -> Tuple[Optional[float], Optional[str]]:
+    """Check a number against the setting's limits. Same result shape as parse_value()."""
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
         return None, setting.error
     if not math.isfinite(value):
         return None, setting.error
@@ -127,19 +136,22 @@ HELP = f"""
 {LINE}"""
 
 
+def load_hint(arrival_rate: float, road_capacity: float) -> str:
+    """One sentence comparing the arrival rate with the road capacity."""
+    ratio = arrival_rate / road_capacity
+    if ratio > 1:
+        return f"Arrivals are {ratio - 1:.0%} ABOVE capacity: more vehicles arrive than the road can pass."
+    if ratio < 1:
+        return f"Arrivals are {1 - ratio:.0%} below capacity: the road can pass every arriving vehicle."
+    return "Arrivals exactly equal capacity."
+
+
 def settings_screen(values: Dict[str, float], has_result: bool) -> str:
     rows = ["", "SIMULATION SETTINGS"]
     for s in SETTINGS:
         shown = number(values[FIELD[s.key]])
         rows.append(f"  {s.key}  {s.name + ' ':.<30} {shown:>10} {s.unit}")
-    ratio = values["arrival_rate"] / values["road_capacity"]
-    if ratio > 1:
-        hint = f"Arrivals are {ratio - 1:.0%} ABOVE capacity: more vehicles arrive than the road can pass."
-    elif ratio < 1:
-        hint = f"Arrivals are {1 - ratio:.0%} below capacity: the road can pass every arriving vehicle."
-    else:
-        hint = "Arrivals exactly equal capacity."
-    rows += [f"     {hint}", "",
+    rows += [f"     {load_hint(values['arrival_rate'], values['road_capacity'])}", "",
              "  R    Run the simulation with these settings",
              "  1-4  Change a setting (type its number)"]
     if has_result:
@@ -148,9 +160,10 @@ def settings_screen(values: Dict[str, float], has_result: bool) -> str:
     return "\n".join(rows)
 
 
-def results_screen(run_no: int, r: Result, prev: Optional[Result]) -> str:
+def summary_rows(r: Result, prev: Optional[Result]) -> List[Tuple[str, Optional[str], Optional[str]]]:
+    """(label, this run, previous run) for the results screen; a value of None marks a heading."""
     worst = r.worst_hour
-    rows = [("Settings", None, None),
+    return [("Settings", None, None),
             ("  Vehicle arrival rate (vehicles/hour)", number(r.arrival_rate), prev and number(prev.arrival_rate)),
             ("  Road capacity (vehicles/hour)", number(r.road_capacity), prev and number(prev.road_capacity)),
             ("  Simulation duration (hours)", str(r.hours), prev and str(prev.hours)),
@@ -169,6 +182,9 @@ def results_screen(run_no: int, r: Result, prev: Optional[Result]) -> str:
             ("  Capacity lost to queue spillback (veh)", number(r.total_capacity_lost),
              prev and number(prev.total_capacity_lost))]
 
+
+def results_screen(run_no: int, r: Result, prev: Optional[Result]) -> str:
+    rows = summary_rows(r, prev)
     out = ["", LINE, f"  RESULTS - run {run_no}", LINE]
     out.append(f"  {'':<42}{'This run':>16}" + (f"{'Previous run':>17}" if prev else ""))
     for label, now, before in rows:
@@ -178,11 +194,18 @@ def results_screen(run_no: int, r: Result, prev: Optional[Result]) -> str:
             out.append(f"  {label:<42}{now:>16}" + (f"{before:>17}" if prev else ""))
 
     verdict, reason = r.queue_trend()
+    check, balanced = vehicle_check(r)
     out += ["", f"  OUTCOME: {verdict}", f"  {reason}", "",
-            f"  Vehicle check: {number(r.start_queue)} waiting at start + {number(r.total_arrived)} arrived"
-            f" = {number(r.total_served)} passed + {number(r.final_queue)} still waiting"
-            + ("  (balanced: no vehicles lost or created)" if abs(r.balance_error) < 1e-6 else "  (NOT BALANCED)")]
+            f"  Vehicle check: {check}"
+            + ("  (balanced: no vehicles lost or created)" if balanced else "  (NOT BALANCED)")]
     return "\n".join(out)
+
+
+def vehicle_check(r: Result) -> Tuple[str, bool]:
+    """The vehicle-conservation sentence, and whether it balances."""
+    text = (f"{number(r.start_queue)} waiting at start + {number(r.total_arrived)} arrived"
+            f" = {number(r.total_served)} passed + {number(r.final_queue)} still waiting")
+    return text, abs(r.balance_error) < 1e-6
 
 
 def hourly_table(r: Result) -> str:
@@ -202,15 +225,20 @@ def hourly_table(r: Result) -> str:
 # --------------------------------------------------------------------------
 # Saving results (for the report and slides)
 # --------------------------------------------------------------------------
+def write_csv(r: Result, handle: TextIO) -> None:
+    """Write the hour-by-hour table as CSV to an open text stream."""
+    writer = csv.writer(handle)
+    writer.writerow(["hour", "vehicles_arrived", "drivers_rerouted", "capacity_veh", "capacity_lost_veh",
+                     "vehicles_passed", "queue_at_end", "demand_ratio", "condition", "level_of_service",
+                     "waiting_vehicle_hours"])
+    for h in r.hourly:
+        writer.writerow([h.hour, h.arrivals, h.rerouted, h.capacity, h.capacity_lost, h.served,
+                         h.queue, round(h.demand_ratio, 4), h.condition, h.los, h.waiting])
+
+
 def save_csv(r: Result, path: str) -> None:
     with open(path, "w", newline="", encoding="utf-8") as handle:
-        writer = csv.writer(handle)
-        writer.writerow(["hour", "vehicles_arrived", "drivers_rerouted", "capacity_veh", "capacity_lost_veh",
-                         "vehicles_passed", "queue_at_end", "demand_ratio", "condition", "level_of_service",
-                         "waiting_vehicle_hours"])
-        for h in r.hourly:
-            writer.writerow([h.hour, h.arrivals, h.rerouted, h.capacity, h.capacity_lost, h.served,
-                             h.queue, round(h.demand_ratio, 4), h.condition, h.los, h.waiting])
+        write_csv(r, handle)
 
 
 # --------------------------------------------------------------------------
