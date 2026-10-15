@@ -1,8 +1,10 @@
 """
-ROAD RUNNERS - Traffic Flow Simulation (System Dynamics)
+ROAD RUNNERS - Traffic Flow Simulation (System Dynamics), terminal version.
 The impact of vehicle arrival rate and road capacity on traffic flow.
 
 Start the program with:   python road_runners.py
+The web version of the same simulation is app.py (streamlit run app.py).
+The menu itself is in roadrunners/interface.py.
 """
 
 import sys

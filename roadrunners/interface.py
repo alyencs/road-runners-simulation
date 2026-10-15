@@ -1,8 +1,15 @@
 """
-The text interface: one settings screen, one Run command, one results screen.
+The terminal program's interface, and the input rules and result texts it shares with the web app.
 
-Input checking lives in SETTINGS / parse_value(); the model lives in model.py;
-the chart lives in charts.py. This file only talks to the user.
+  * SETTINGS, check_value(), parse_value(): the four inputs, their allowed ranges and the
+    plain-language error messages. The web app (web.py / app.py) uses the same rules.
+  * simulate_settings(): runs model.simulate() with a dictionary of checked settings.
+  * summary_rows(), vehicle_check(), write_csv(): result rows, the vehicle-balance sentence and
+    the hour-by-hour CSV file, shown or saved by both versions.
+  * The rest (screens, ask(), change_setting(), run(), main()) is the text menu started by
+    road_runners.py.
+
+The equations live in model.py and the PNG chart in charts.py.
 """
 
 from __future__ import annotations
@@ -24,6 +31,7 @@ LINE = "=" * 70
 # --------------------------------------------------------------------------
 @dataclass(frozen=True)
 class Setting:
+    """One input: its limits, its unit and the message shown when a value is not allowed."""
     key: str            # what the user types to change it
     name: str
     unit: str
@@ -55,6 +63,11 @@ FIELD = {"1": "arrival_rate", "2": "road_capacity", "3": "hours", "4": "start_qu
 
 # Starting values only. Any value inside the allowed range can be used instead.
 STARTING_VALUES = {"arrival_rate": 1100.0, "road_capacity": 1000.0, "hours": 12, "start_queue": 0}
+
+
+def simulate_settings(values: Dict[str, float]) -> Result:
+    """Run the model with the four settings (keys as in FIELD), already checked with check_value()."""
+    return simulate(values["arrival_rate"], values["road_capacity"], int(values["hours"]), values["start_queue"])
 
 
 def parse_value(setting: Setting, text: str) -> Tuple[Optional[float], Optional[str]]:
@@ -245,7 +258,7 @@ def save_csv(r: Result, path: str) -> None:
 # Main loop
 # --------------------------------------------------------------------------
 class Quit(Exception):
-    pass
+    """Raised when the input stream ends, so the program can say goodbye and exit cleanly."""
 
 
 def ask(prompt: str) -> str:
@@ -256,6 +269,7 @@ def ask(prompt: str) -> str:
 
 
 def change_setting(values: Dict[str, float], s: Setting) -> None:
+    """Ask for a new value until it is valid; an empty answer keeps the current value."""
     field = FIELD[s.key]
     current = number(values[field])
     print(f"\n  {s.name}: {s.meaning}.")
@@ -277,11 +291,11 @@ def change_setting(values: Dict[str, float], s: Setting) -> None:
 
 def run(values: Dict[str, float], run_no: int, previous: Optional[Result], results_dir: str,
         stamp: str, show_chart: bool) -> Result:
+    """Simulate, print the results next to the previous run, save the chart and CSV, show the chart."""
     from . import charts
     import matplotlib.pyplot as plt
 
-    result = simulate(values["arrival_rate"], values["road_capacity"], int(values["hours"]),
-                      values["start_queue"])
+    result = simulate_settings(values)
     print(results_screen(run_no, result, previous))
 
     os.makedirs(results_dir, exist_ok=True)
@@ -300,6 +314,7 @@ def run(values: Dict[str, float], run_no: int, previous: Optional[Result], resul
 
 
 def main(results_dir: Optional[str] = None, show_chart: bool = True) -> int:
+    """The menu loop. Tests pass a temporary results_dir and show_chart=False."""
     results_dir = results_dir or os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                                               "results")
     stamp = _dt.datetime.now().strftime("%Y-%m-%d_%H%M%S")

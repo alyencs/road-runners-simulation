@@ -1,5 +1,7 @@
 """
-Tests for the web app helpers (roadrunners/web.py): input checking, tables and charts.
+Tests for the web app helpers (roadrunners/web.py): input checking, metric cards, tables,
+CSV download, MODEL.md sections and the interactive charts. They check that everything the
+web app shows is the model's actual output. Skipped if altair/pandas are not installed.
 
 Run from the project folder with:   python -m unittest discover -s tests -v
 """
@@ -21,7 +23,7 @@ try:
 except ImportError:  # altair/pandas not installed: only the terminal program's tests can run
     web = None
 
-from roadrunners.interface import STARTING_VALUES  # noqa: E402
+from roadrunners.interface import STARTING_VALUES, simulate_settings  # noqa: E402
 from roadrunners.model import simulate  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -61,10 +63,10 @@ class TestInputs(unittest.TestCase):
         self.assertEqual(errors, ["Please enter 720 or less for the simulation duration "
                                   "(larger values are far beyond a single road)."])
 
-    def test_run_uses_the_model(self):
+    def test_settings_reach_the_model(self):
         values, _ = web.validate_inputs({"arrival_rate": 1200, "road_capacity": 1000, "hours": 12,
                                          "start_queue": 0})
-        self.assertEqual(web.run(values).queue_line(), simulate(1200, 1000, 12).queue_line())
+        self.assertEqual(simulate_settings(values).queue_line(), simulate(1200, 1000, 12).queue_line())
 
 
 @unittest.skipIf(web is None, "web app libraries are not installed")
@@ -125,7 +127,7 @@ class TestTables(unittest.TestCase):
             self.assertTrue(sections[heading])
 
     def test_demonstration_scenarios_do_what_they_say(self):
-        verdicts = [web.run(values).queue_trend()[0] for _, values, _ in web.DEMO_SCENARIOS]
+        verdicts = [simulate_settings(values).queue_trend()[0] for _, values, _ in web.DEMO_SCENARIOS]
         self.assertEqual(verdicts, ["QUEUE GROWING", "NO QUEUE", "BUILDS UP AND CLEARS REPEATEDLY",
                                     "QUEUE CLEARED", "QUEUE GROWING"])
         for _, values, _ in web.DEMO_SCENARIOS:
@@ -136,6 +138,19 @@ class TestTables(unittest.TestCase):
 @unittest.skipIf(web is None, "web app libraries are not installed")
 class TestCharts(unittest.TestCase):
     """Every chart is drawn from the simulation result, not from sample values."""
+
+    def test_settings_label_keeps_decimals(self):
+        # Regression: the PNG title used to round every setting to a whole number, so a
+        # capacity of 0.5 read "capacity 0 veh/h" and 999.9 vs 1,000 read "1,000 vs 1,000".
+        from roadrunners import charts
+        r = simulate(999.9, 0.5, 4, 0)
+        self.assertEqual(web.settings_label(r), "arrival 999.9 veh/h, capacity 0.5 veh/h, 4 h")
+        figure = charts.draw(r)
+        self.assertEqual(figure._suptitle.get_text(),
+                         "Road Runners simulation: arrival 999.9 veh/h, capacity 0.5 veh/h, 4 h")
+        matplotlib.pyplot.close(figure)
+        self.assertEqual(web.settings_label(simulate(800, 1000, 12, 500)),
+                         "arrival 800 veh/h, capacity 1,000 veh/h, 500 waiting at start, 12 h")
 
     def test_queue_chart(self):
         now, before = simulate(1100, 1000, 12), simulate(1200, 1000, 12)

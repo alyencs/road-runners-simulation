@@ -1,5 +1,8 @@
 """
-Automated tests for the Road Runners simulation.
+Tests for the simulation model (roadrunners/model.py) and the terminal program
+(roadrunners/interface.py, charts.py): equations against hand calculations, vehicle
+conservation, feedback loops, queue verdicts, the results quoted in the documentation,
+input checking, the shared result helpers, and a full terminal session.
 
 Run from the project folder with:   python -m unittest discover -s tests -v
 

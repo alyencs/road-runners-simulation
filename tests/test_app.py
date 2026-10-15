@@ -1,5 +1,7 @@
 """
-Tests for the Streamlit web app (app.py), run headless with Streamlit's own test runner.
+Tests for the Streamlit web app (app.py), run headless with Streamlit's own test runner
+(no browser): default and other settings, an invalid input, the comparison with the previous
+run, the demonstration scenarios and the reset button. Skipped if Streamlit is not installed.
 
 Run from the project folder with:   python -m unittest discover -s tests -v
 """
