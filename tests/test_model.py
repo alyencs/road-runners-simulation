@@ -189,6 +189,63 @@ class TestInputChecking(unittest.TestCase):
             self.assertLessEqual(r.final_queue, no_feedback_growth + 1e-6 if a > c else 0)
 
 
+class TestDocumentedBehaviour(unittest.TestCase):
+    """The results quoted in MODEL.md and README.md come from the model, not from hand-typed numbers."""
+
+    def test_model_md_table(self):
+        r = simulate(1100, 1000, 12)
+        self.assertEqual((r.final_queue, round(r.average_delay_minutes, 1)), (505, 15.4))
+        r = simulate(1200, 1000, 12)
+        self.assertEqual((r.final_queue, round(r.average_delay_minutes, 1)), (1580, 43.9))
+        self.assertEqual(simulate(1300, 1000, 12).final_queue, 2640)
+        self.assertEqual(simulate(1100, 1200, 12).longest_queue, 0)
+
+    def test_repeating_cycle(self):
+        # Arrival 1040, capacity 1000: builds up to 40, clears, and repeats every 5 hours.
+        line = simulate(1040, 1000, 12).queue_line()
+        self.assertEqual(max(line), 40)
+        self.assertEqual(line[2:7], line[7:12])
+        self.assertEqual([round(q) for q in line[2:7]], [40, 28, 16, 4, 0])
+
+
+class TestSharedHelpers(unittest.TestCase):
+    """Helpers that both the terminal program and the web app use."""
+
+    def test_check_value_matches_parse_value(self):
+        for key, value in [("1", 0), ("1", 1250.5), ("2", 0.5), ("3", 24.0), ("4", 300)]:
+            setting = interface.BY_KEY[key]
+            self.assertEqual(interface.check_value(setting, value), interface.parse_value(setting, str(value)))
+        for key, value in [("1", -5), ("1", float("nan")), ("1", 1_000_001), ("2", 0), ("3", 0), ("3", 2.5),
+                           ("3", 721), ("4", -1), ("4", 2.5), ("1", None), ("2", "ten")]:
+            value_out, error = interface.check_value(interface.BY_KEY[key], value)
+            self.assertIsNone(value_out, (key, value))
+            self.assertTrue(error.startswith("Please enter"), (key, value))
+
+    def test_whole_number_settings_return_int(self):
+        self.assertIsInstance(interface.check_value(interface.BY_KEY["3"], 12.0)[0], int)
+
+    def test_load_hint(self):
+        self.assertIn("10% ABOVE capacity", interface.load_hint(1100, 1000))
+        self.assertIn("20% below capacity", interface.load_hint(800, 1000))
+        self.assertEqual(interface.load_hint(1000, 1000), "Arrivals exactly equal capacity.")
+
+    def test_vehicle_check(self):
+        text, balanced = interface.vehicle_check(simulate(1100, 1000, 12))
+        self.assertTrue(balanced)
+        self.assertEqual(text, "0 waiting at start + 12,155 arrived = 11,650 passed + 505 still waiting")
+
+    def test_write_csv_matches_saved_file(self):
+        r = simulate(900, 1000, 6, start_queue=500)
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "table.csv")
+            interface.save_csv(r, path)
+            with open(path, encoding="utf-8", newline="") as handle:
+                saved = handle.read()
+        buffer = io.StringIO()
+        interface.write_csv(r, buffer)
+        self.assertEqual(buffer.getvalue(), saved)
+
+
 class TestProgram(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

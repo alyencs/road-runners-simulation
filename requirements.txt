@@ -1,1 +1,8 @@
-matplotlib>=3.5
+# Runtime libraries for the ROAD RUNNERS simulation.
+#   Web app (app.py):            streamlit, altair, pandas
+#   Charts / terminal program:   matplotlib, numpy
+streamlit>=1.51,<2
+altair>=5.5,<7
+pandas>=2.2,<4
+matplotlib>=3.8,<4
+numpy>=1.26,<3
