@@ -1,5 +1,9 @@
 # The Road Runners Model
 
+This document describes the System Dynamics model behind ROAD RUNNERS: what it represents,
+its equations and feedback loops, its assumptions and limits, and how to read its results.
+The code is `roadrunners/model.py`; `README.md` explains how to install, run and deploy the app.
+
 ## Purpose
 
 To show how the **vehicle arrival rate** (demand) and the **road capacity** (supply)
@@ -44,9 +48,9 @@ a vehicle-by-vehicle model would add detail without answering it better.
 | Vehicle arrival rate | A | vehicles/hour | 0 – 1,000,000 |
 | Road capacity | C | vehicles/hour | > 0 – 1,000,000 |
 | Simulation duration | T | hours | 1 – 720 (whole) |
-| Vehicles already waiting | Q(0) | vehicles | 0 – 10,000,000 (whole) |
+| Initial queue (vehicles already waiting) | Q(0) | vehicles | 0 – 10,000,000 (whole) |
 
-The program starts with example values (A = 1,100, C = 1,000, T = 12, Q(0) = 0). They are
+The web app and the terminal program start with example values (A = 1,100, C = 1,000, T = 12, Q(0) = 0). They are
 **illustrative**, not measured data, and any value in the allowed range can be used.
 
 ## Model rules (fixed assumptions)
@@ -94,7 +98,7 @@ rerouting (990 arrive) and 5 % spillback (950 pass), and the queue reaches 265.
 
 ## Behaviour the model produces
 
-All of these are calculated by the program, not entered by hand:
+All of these are calculated by the model, not entered by hand (`tests/test_model.py` checks them):
 
 | Settings | Outcome |
 |---|---|

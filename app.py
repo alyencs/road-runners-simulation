@@ -1,12 +1,16 @@
 """
-ROAD RUNNERS - web app (Streamlit).
+ROAD RUNNERS - web app (Streamlit entry point; Streamlit Community Cloud runs this file).
 The Impact of Vehicle Arrival Rate and Road Capacity on Traffic Flow.
 
 Run locally with:   streamlit run app.py
 
-This file only lays out the page. The model is roadrunners/model.py (the same
-one the terminal program uses); input checking, tables and charts come from
-roadrunners/web.py.
+This file only lays out the page. When Run Simulation is pressed:
+  1. web.validate_inputs() checks the four settings with the rules in interface.py;
+  2. interface.simulate_settings() runs model.simulate(), the same model the terminal program uses;
+  3. the Result is kept in st.session_state ("current", and the run before it as "previous"),
+     and every metric, table and chart below is built from it by roadrunners/web.py.
+Streamlit re-runs this whole script after every click, so anything that must survive between
+runs (the settings and the last two results) lives in st.session_state.
 """
 
 from __future__ import annotations
@@ -22,7 +26,8 @@ import matplotlib.pyplot as plt  # noqa: E402
 import streamlit as st  # noqa: E402
 
 from roadrunners import charts, web  # noqa: E402
-from roadrunners.interface import STARTING_VALUES, describe_range, load_hint, vehicle_check  # noqa: E402
+from roadrunners.interface import (STARTING_VALUES, describe_range, load_hint, simulate_settings,  # noqa: E402
+                                   vehicle_check)
 from roadrunners.model import BUILDING_MAX, STABLE_MAX  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
@@ -44,6 +49,7 @@ WIDGETS = {
 # Session state: widget values, the latest run and the run before it
 # --------------------------------------------------------------------------
 def widget_value(field: str, value: float):
+    """Whole-number settings use int widgets, the others float widgets (Streamlit needs one type)."""
     return int(value) if web.INPUTS[field].whole else float(value)
 
 
@@ -99,11 +105,9 @@ with st.sidebar:
 
     for field, widget in WIDGETS.items():
         setting = web.INPUTS[field]
-        whole = setting.whole
         st.number_input(
             widget["label"], key=field, step=widget["step"], format=widget["format"],
-            min_value=int(setting.low) if whole else float(setting.low),
-            max_value=int(setting.high) if whole else float(setting.high),
+            min_value=widget_value(field, setting.low), max_value=widget_value(field, setting.high),
             help=f"{setting.meaning[0].upper() + setting.meaning[1:]}. Allowed: {describe_range(setting)} "
                  f"{setting.unit}.")
 
@@ -122,7 +126,7 @@ with st.sidebar:
         else:
             st.session_state.run_count += 1
             previous_run = st.session_state.current
-            result_now = web.run(values)
+            result_now = simulate_settings(values)
             st.session_state.previous = previous_run
             st.session_state.current = {
                 "run_no": st.session_state.run_count, "result": result_now,

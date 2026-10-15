@@ -1,10 +1,10 @@
 """
-Helpers for the web app (app.py): input checking, tables and charts.
+Helpers for the web app (app.py): input checking, metric cards, tables and interactive charts.
 
-Nothing here changes the model. Inputs are checked with the same SETTINGS rules
-as the terminal program, the simulation is model.simulate(), and every table and
-chart is built from the Result it returns. There is no Streamlit code in this
-file, so it can be tested on its own.
+app.py only lays out the page; everything it shows is prepared here. Nothing here changes the
+model: inputs are checked with the terminal program's SETTINGS rules (interface.py), the
+simulation is model.simulate(), and every table and chart is built from the Result it returns.
+There is no Streamlit code in this file, so tests/test_web.py can test it on its own.
 """
 
 from __future__ import annotations
@@ -16,9 +16,10 @@ from typing import Dict, List, Mapping, Optional, Tuple
 import altair as alt
 import pandas as pd
 
+from . import charts
 from .charts import BLUE, GREY, ORANGE
 from .interface import FIELD, SETTINGS, Setting, check_value, number, summary_rows, write_csv
-from .model import BUILDING_MAX, CONDITIONS, DEFAULT_RULES, LOS_BOUNDS, LOS_LETTERS, STABLE_MAX, Result, simulate
+from .model import BUILDING_MAX, CONDITIONS, DEFAULT_RULES, LOS_BOUNDS, LOS_LETTERS, STABLE_MAX, Result
 
 # Status colours for the traffic condition (good / warning / critical).
 CONDITION_COLORS = {"Stable": "#0ca30c", "Building": "#fab219", "Severe": "#d03b3b"}
@@ -26,7 +27,7 @@ CONDITION_COLORS = {"Stable": "#0ca30c", "Building": "#fab219", "Severe": "#d03b
 # The four inputs, keyed by the model's argument names.
 INPUTS: Dict[str, Setting] = {FIELD[s.key]: s for s in SETTINGS}
 
-# Steps from README section 5 ("Suggested demonstration").
+# The README's "Suggested demonstration", offered in the sidebar: (name, settings, expected outcome).
 DEMO_SCENARIOS: List[Tuple[str, Dict[str, float], str]] = [
     ("1. Arrivals 10% above capacity",
      {"arrival_rate": 1100.0, "road_capacity": 1000.0, "hours": 12, "start_queue": 0},
@@ -72,17 +73,9 @@ def validate_inputs(raw: Mapping[str, object]) -> Tuple[Dict[str, float], List[s
     return values, errors
 
 
-def run(values: Mapping[str, float]) -> Result:
-    """Run the model with values that passed validate_inputs()."""
-    return simulate(values["arrival_rate"], values["road_capacity"], int(values["hours"]), values["start_queue"])
-
-
 def settings_label(r: Result) -> str:
-    text = (f"arrival {number(r.arrival_rate)} veh/h, capacity {number(r.road_capacity)} veh/h, "
-            f"{r.hours} h")
-    if r.start_queue > 0:
-        text += f", {number(r.start_queue)} waiting at start"
-    return text
+    """The run's settings in words, with its duration (same wording as the PNG chart's title)."""
+    return f"{charts.settings_label(r)}, {r.hours} h"
 
 
 # --------------------------------------------------------------------------
@@ -184,15 +177,10 @@ def rules_frame() -> pd.DataFrame:
 
 def los_frame() -> pd.DataFrame:
     """Level of Service grades, read from the model's constants."""
-    lower = [None] + list(LOS_BOUNDS)
-    ranges = []
-    for i, letter in enumerate(LOS_LETTERS):
-        if i == 0:
-            ranges.append(f"≤ {LOS_BOUNDS[0]:.2f}")
-        elif i < len(LOS_BOUNDS):
-            ranges.append(f"{lower[i]:.2f} – {LOS_BOUNDS[i]:.2f}")
-        else:
-            ranges.append(f"> {LOS_BOUNDS[-1]:.2f}")
+    # LOS_BOUNDS holds the upper bound of A..E; F is everything above the last bound.
+    ranges = ([f"≤ {LOS_BOUNDS[0]:.2f}"]
+              + [f"{low:.2f} – {high:.2f}" for low, high in zip(LOS_BOUNDS, LOS_BOUNDS[1:])]
+              + [f"> {LOS_BOUNDS[-1]:.2f}"])
     return pd.DataFrame({"Level of Service": list(LOS_LETTERS), "Demand ratio": ranges})
 
 
@@ -223,6 +211,7 @@ def queue_frame(r: Result, prev: Optional[Result] = None) -> pd.DataFrame:
 
 
 def queue_chart(r: Result, prev: Optional[Result] = None) -> alt.LayerChart:
+    """Queue line of this run (and the previous run, dashed grey), with a hover crosshair and tooltip."""
     data = queue_frame(r, prev)
     runs = list(data["Run"].unique())
     colors = alt.Scale(domain=["This run", "Previous run"], range=[BLUE, GREY])
@@ -248,6 +237,11 @@ def queue_chart(r: Result, prev: Optional[Result] = None) -> alt.LayerChart:
     return alt.layer(area, lines, rule, points).properties(height=340)
 
 
+# Series of the arrivals-vs-capacity chart: the two flows, then the two settings they come from.
+FLOW_SERIES = ["Vehicles arriving (after rerouting)", "Road capacity (after spillback)",
+               "Arrival rate setting", "Road capacity setting"]
+
+
 def flow_frame(r: Result) -> pd.DataFrame:
     """Vehicles per hour arriving and road capacity, one row per hour and series.
 
@@ -255,12 +249,12 @@ def flow_frame(r: Result) -> pd.DataFrame:
     step from the start to the end of that hour. The original settings are
     included only when a feedback loop changed them.
     """
-    series = [("Vehicles arriving (after rerouting)", [h.arrivals for h in r.hourly]),
-              ("Road capacity (after spillback)", [h.capacity for h in r.hourly])]
+    series = [(FLOW_SERIES[0], [h.arrivals for h in r.hourly]),
+              (FLOW_SERIES[1], [h.capacity for h in r.hourly])]
     if r.total_rerouted > 0:
-        series.append(("Arrival rate setting", [r.arrival_rate] * r.hours))
+        series.append((FLOW_SERIES[2], [r.arrival_rate] * r.hours))
     if r.total_capacity_lost > 0:
-        series.append(("Road capacity setting", [r.road_capacity] * r.hours))
+        series.append((FLOW_SERIES[3], [r.road_capacity] * r.hours))
     rows = []
     for name, values in series:
         for t, value in enumerate(values, start=1):
@@ -271,11 +265,8 @@ def flow_frame(r: Result) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-FLOW_SERIES = ["Vehicles arriving (after rerouting)", "Road capacity (after spillback)",
-               "Arrival rate setting", "Road capacity setting"]
-
-
 def flow_chart(r: Result) -> alt.LayerChart:
+    """Arrivals and capacity as hourly steps; dashed lines show the settings when feedback changed them."""
     data = flow_frame(r)
     present = [s for s in FLOW_SERIES if s in set(data["Series"])]
     style = {FLOW_SERIES[0]: (BLUE, [1, 0]), FLOW_SERIES[1]: (ORANGE, [1, 0]),

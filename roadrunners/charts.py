@@ -1,10 +1,14 @@
 """
-The results chart: one figure, two panels, drawn only from simulation results.
+The results chart (matplotlib): one figure, two panels, drawn only from simulation results.
 
   Top    : queue length over time (the main finding: growing, stable or clearing),
            with the previous run in grey for comparison.
   Bottom : vehicles arriving vs road capacity each hour, with the two feedback
            effects (rerouted drivers, capacity lost to spillback) shaded.
+
+The terminal program shows and saves this figure after every run; the web app offers it
+as the "Chart for slides (PNG)" download. The web app's interactive charts are in web.py
+and reuse the colours defined here.
 """
 
 from __future__ import annotations
@@ -15,6 +19,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 
+from .interface import number
 from .model import Result
 
 BLUE, ORANGE, GREY, TEXT, TEXT_2, GRID = "#2a78d6", "#eb6834", "#a3a29c", "#0b0b0b", "#52514e", "#e4e3df"
@@ -33,10 +38,13 @@ def can_show_window() -> bool:
     return matplotlib.get_backend().lower() not in ("agg", "pdf", "ps", "svg", "cairo", "template")
 
 
-def _settings_label(r: Result) -> str:
-    text = f"arrival {r.arrival_rate:,.0f} veh/h, capacity {r.road_capacity:,.0f} veh/h"
+def settings_label(r: Result) -> str:
+    """The run's settings in words, e.g. "arrival 1,100 veh/h, capacity 1,000 veh/h"."""
+    # number() keeps a decimal when the setting has one, so 999.9 vs 1,000 or a capacity
+    # of 0.5 are not shown rounded to misleading values.
+    text = f"arrival {number(r.arrival_rate)} veh/h, capacity {number(r.road_capacity)} veh/h"
     if r.start_queue > 0:
-        text += f", {r.start_queue:,.0f} waiting at start"
+        text += f", {number(r.start_queue)} waiting at start"
     return text
 
 
@@ -49,7 +57,7 @@ def draw(result: Result, previous: Optional[Result] = None):
 
     fig, (top, bottom) = plt.subplots(2, 1, figsize=(10, 8.5), sharex=False,
                                       gridspec_kw={"height_ratios": [3, 2]})
-    fig.suptitle(f"Road Runners simulation: {_settings_label(result)}, {T} h",
+    fig.suptitle(f"Road Runners simulation: {settings_label(result)}, {T} h",
                  x=0.01, ha="left", fontsize=13, fontweight="bold", color=TEXT)
 
     # ---- Top: the queue -----------------------------------------------------------
@@ -57,7 +65,7 @@ def draw(result: Result, previous: Optional[Result] = None):
     if previous is not None:
         prev_hours = np.arange(previous.hours + 1)
         top.plot(prev_hours, previous.queue_line(), color=GREY, lw=2,
-                 label=f"Previous run ({_settings_label(previous)})")
+                 label=f"Previous run ({settings_label(previous)})")
     top.fill_between(hours, queue, color=BLUE, alpha=0.12, lw=0)
     top.plot(hours, queue, color=BLUE, lw=2.5, label="This run", **markers)
     top.set_title(f"Vehicles waiting in the queue - {verdict.lower()}", loc="left")
